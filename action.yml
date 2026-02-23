@@ -1,6 +1,6 @@
 name: 'Ollama AI Code Review'
-description: 'AI code review using Ollama (following sage-review pattern)'
-author: 'YOUR_NAME'
+description: 'AI code review using Ollama following sage-review pattern'
+author: 'Savita Kumari'
 
 inputs:
   github-token:
@@ -20,35 +20,24 @@ runs:
     - name: Setup Ollama
       shell: bash
       run: |
-        echo "🚀 Installing Ollama..."
+        echo "Installing Ollama..."
         curl -fsSL https://ollama.ai/install.sh | sh
-        
-        # Start Ollama (like sage-review starts services)
         ollama serve &
-        sleep 10
-        
-        # Pull model
-        echo "📦 Pulling model: ${{ inputs.model }}"
+        sleep 15
+        echo "Pulling model: ${{ inputs.model }}"
         ollama pull ${{ inputs.model }}
-        
-        echo "✅ Ollama ready"
+        echo "Ollama ready"
 
     - name: Get changed files via GitHub API
       shell: bash
       env:
-        GITHUB_PERSONAL_TOKEN: ${{ inputs.github-token }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
         PR_NUMBER: ${{ inputs.pr-number }}
         GITHUB_REPOSITORY: ${{ github.repository }}
       run: |
-        echo "📁 Getting changed files..."
-        
-        # Make CLI executable
+        echo "Getting changed files..."
         chmod +x ${{ github.action_path }}/scripts/ollama-cli.sh
-        
-        # Get changed files (exactly like sage-review does)
-        ${{ github.action_path }}/scripts/ollama-cli.sh get-changed-files \
-          --pr "$PR_NUMBER" \
-          --repo "$GITHUB_REPOSITORY"
+        ${{ github.action_path }}/scripts/ollama-cli.sh get-changed-files --pr "$PR_NUMBER" --repo "$GITHUB_REPOSITORY"
 
     - name: Run AI code review
       shell: bash
@@ -56,55 +45,34 @@ runs:
         MODEL: ${{ inputs.model }}
         OLLAMA_HOST: "http://localhost:11434"
       run: |
-        echo "🔍 Running AI code review..."
-        
-        # Read changed files
+        echo "Running AI code review..."
         if [ -f ".ai-review/output/code-files.txt" ]; then
           FILES=$(cat .ai-review/output/code-files.txt | tr '\n' ',' | sed 's/,$//')
-          
           if [ -n "$FILES" ]; then
-            # Run review (like sage-review calls sage CLI)
-            ${{ github.action_path }}/scripts/ollama-cli.sh review \
-              --files "$FILES" \
-              --model "$MODEL"
+            ${{ github.action_path }}/scripts/ollama-cli.sh review --files "$FILES" --model "$MODEL"
           else
-            echo "⚠️  No code files to review"
+            echo "No code files to review"
           fi
         else
-          echo "❌ No changed files found"
+          echo "No changed files found"
         fi
 
     - name: Post PR comment
       shell: bash
       env:
-        GITHUB_PERSONAL_TOKEN: ${{ inputs.github-token }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
         PR_NUMBER: ${{ inputs.pr-number }}
         GITHUB_REPOSITORY: ${{ github.repository }}
       run: |
-        echo "💬 Posting review to PR..."
-        
+        echo "Posting review to PR..."
         if [ -f ".ai-review/output/full-review.md" ]; then
-          # Create comment (like sage-review posts comments)
           REVIEW_CONTENT=$(cat .ai-review/output/full-review.md)
-          
-          # Build comment body
-          COMMENT_BODY="## 🤖 AI Code Review Results
-
-$REVIEW_CONTENT
-
----
-*Powered by ${{ inputs.model }} • $(date)*"
-          
-          # Post to GitHub (exactly like sage-review does)
-          curl -X POST \
-            -H "Authorization: token $GITHUB_PERSONAL_TOKEN" \
-            -H "Accept: application/vnd.github.v3+json" \
-            "https://api.github.com/repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
-            -d "$(echo "$COMMENT_BODY" | jq -Rs '{"body": .}')"
-          
-          echo "✅ Review posted to PR #$PR_NUMBER"
+          COMMENT_BODY="## AI Code Review Results\n\n$REVIEW_CONTENT\n\n---\n*Powered by ${{ inputs.model }}*"
+          COMMENT_JSON=$(echo "$COMMENT_BODY" | jq -Rs '{"body": .}')
+          curl -X POST -H "Authorization: token $GITHUB_TOKEN" -H "Accept: application/vnd.github.v3+json" "https://api.github.com/repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" -d "$COMMENT_JSON"
+          echo "Review posted to PR"
         else
-          echo "❌ No review results to post"
+          echo "No review results to post"
         fi
 
     - name: Upload artifacts
