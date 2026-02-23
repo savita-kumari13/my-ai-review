@@ -1,0 +1,123 @@
+name: 'Ollama AI Code Review'
+description: 'AI code review using Ollama (following sage-review pattern)'
+author: 'Savita'
+
+inputs:
+  github-token:
+    description: 'GitHub token'
+    required: true
+  pr-number:
+    description: 'PR number'
+    required: true
+  model:
+    description: 'Ollama model'
+    required: false
+    default: 'deepseek-coder:6.7b'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Ollama
+      shell: bash
+      run: |
+        echo "🚀 Installing Ollama..."
+        curl -fsSL https://ollama.ai/install.sh | sh
+        
+        # Start Ollama (like sage-review starts services)
+        ollama serve &
+        sleep 10
+        
+        # Pull model
+        echo "📦 Pulling model: ${{ inputs.model }}"
+        ollama pull ${{ inputs.model }}
+        
+        echo "✅ Ollama ready"
+
+    - name: Get changed files via GitHub API
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        PR_NUMBER: ${{ inputs.pr-number }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+      run: |
+        echo "📁 Getting changed files..."
+        
+        # Make CLI executable
+        chmod +x ${{ github.action_path }}/scripts/ollama-cli.sh
+        
+        # Get changed files (exactly like sage-review does)
+        ${{ github.action_path }}/scripts/ollama-cli.sh get-changed-files \
+          --pr "$PR_NUMBER" \
+          --repo "$GITHUB_REPOSITORY"
+
+    - name: Run AI code review
+      shell: bash
+      env:
+        MODEL: ${{ inputs.model }}
+        OLLAMA_HOST: "http://localhost:11434"
+      run: |
+        echo "🔍 Running AI code review..."
+        
+        # Read changed files
+        if [ -f ".ai-review/output/code-files.txt" ]; then
+          FILES=$(cat .ai-review/output/code-files.txt | tr '\n' ',' | sed 's/,$//')
+          
+          if [ -n "$FILES" ]; then
+            # Run review (like sage-review calls sage CLI)
+            ${{ github.action_path }}/scripts/ollama-cli.sh review \
+              --files "$FILES" \
+              --model "$MODEL"
+          else
+            echo "⚠️  No code files to review"
+          fi
+        else
+          echo "❌ No changed files found"
+        fi
+
+    - name: Post PR comment
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        PR_NUMBER: ${{ inputs.pr-number }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+      run: |
+        echo "💬 Posting review to PR..."
+        
+        if [ -f ".ai-review/output/full-review.md" ]; then
+          # Create comment (like sage-review posts comments)
+          REVIEW_CONTENT=$(cat .ai-review/output/full-review.md)
+          
+          # Build comment body using heredoc (cleaner)
+          COMMENT_BODY=$(cat << EOF
+          ## 🤖 AI Code Review Results
+
+          $REVIEW_CONTENT
+
+          ---
+          *Powered by ${{ inputs.model }} • $(date)*
+          EOF
+          )
+          
+          # Post to GitHub (exactly like sage-review does)
+          curl -X POST \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
+            -d "$(echo "$COMMENT_BODY" | jq -Rs '{"body": .}')"
+          
+          echo "✅ Review posted to PR #$PR_NUMBER"
+        else
+          echo "❌ No review results to post"
+        fi
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: ai-review-results
+        path: .ai-review/output/
+        retention-days: 7
+
+branding:
+  icon: 'eye'
+  color: 'purple'
