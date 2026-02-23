@@ -1,6 +1,6 @@
 name: 'Ollama AI Code Review'
 description: 'AI code review using Ollama (following sage-review pattern)'
-author: 'Savita'
+author: 'YOUR_NAME'
 
 inputs:
   github-token:
@@ -12,7 +12,7 @@ inputs:
   model:
     description: 'Ollama model'
     required: false
-    default: 'deepseek-coder:6.7b'
+    default: 'codellama:7b'
 
 runs:
   using: 'composite'
@@ -36,7 +36,7 @@ runs:
     - name: Get changed files via GitHub API
       shell: bash
       env:
-        GITHUB_TOKEN: ${{ inputs.github-token }}
+        GITHUB_PERSONAL_TOKEN: ${{ inputs.github-token }}
         PR_NUMBER: ${{ inputs.pr-number }}
         GITHUB_REPOSITORY: ${{ github.repository }}
       run: |
@@ -77,7 +77,7 @@ runs:
     - name: Post PR comment
       shell: bash
       env:
-        GITHUB_TOKEN: ${{ inputs.github-token }}
+        GITHUB_PERSONAL_TOKEN: ${{ inputs.github-token }}
         PR_NUMBER: ${{ inputs.pr-number }}
         GITHUB_REPOSITORY: ${{ github.repository }}
       run: |
@@ -87,20 +87,17 @@ runs:
           # Create comment (like sage-review posts comments)
           REVIEW_CONTENT=$(cat .ai-review/output/full-review.md)
           
-          # Build comment body using heredoc (cleaner)
-          COMMENT_BODY=$(cat << EOF
-          ## 🤖 AI Code Review Results
+          # Build comment body
+          COMMENT_BODY="## 🤖 AI Code Review Results
 
-          $REVIEW_CONTENT
+$REVIEW_CONTENT
 
-          ---
-          *Powered by ${{ inputs.model }} • $(date)*
-          EOF
-          )
+---
+*Powered by ${{ inputs.model }} • $(date)*"
           
           # Post to GitHub (exactly like sage-review does)
           curl -X POST \
-            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Authorization: token $GITHUB_PERSONAL_TOKEN" \
             -H "Accept: application/vnd.github.v3+json" \
             "https://api.github.com/repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" \
             -d "$(echo "$COMMENT_BODY" | jq -Rs '{"body": .}')"
@@ -111,7 +108,7 @@ runs:
         fi
 
     - name: Upload artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: ai-review-results
