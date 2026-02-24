@@ -12,7 +12,7 @@ inputs:
   model:
     description: 'Ollama model'
     required: false
-    default: 'codellama:7b'
+    default: 'llama2:13b'
 
 runs:
   using: 'composite'

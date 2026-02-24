@@ -3,7 +3,7 @@ set -e
 
 # Ollama CLI wrapper (following sage-review's pattern)
 OLLAMA_HOST="${OLLAMA_HOST:-http://localhost:11434}"
-MODEL="${MODEL:-codellama:7b}"
+MODEL="${MODEL:-llama2:13b}"
 OUTPUT_DIR=".ai-review/output"
 
 usage() {
